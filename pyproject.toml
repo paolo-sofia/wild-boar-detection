@@ -1,0 +1,32 @@
+[project]
+name = "wild-boar-detection"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Paolo Sofia", email = "paolosofia6@gmail.com" }
+]
+dependencies = []
+readme = "README.md"
+requires-python = ">= 3.8"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "requests>=2.31.0",
+    "notebook>=7.1.2",
+    "bing-image-downloader>=1.1.2",
+    "opencv-python>=4.9.0.80",
+    "pandas>=2.2.1",
+    "pyarrow>=15.0.2",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wild_boar_detection"]
