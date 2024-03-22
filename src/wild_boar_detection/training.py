@@ -25,9 +25,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def log_best_epoch_metric(logger: MLFlowLogger, metrics_path: pathlib.Path) -> None:
+    """Logs the best epoch metrics to the specified metrics path.
+
+    Args:
+        logger: The MLFlowLogger instance used for logging.
+        metrics_path: The path to the metrics directory.
+
+    Returns:
+        None
+    """
     print(f"Logging best epoch metrics to {metrics_path}")
     with metrics_path.joinpath("valid_loss").open("r") as f:
-        valid_loss = list(enumerate(float(x.split(" ")[1]) for x in f.readlines()))
+        valid_loss: list[tuple[int, float]] = list(enumerate(float(x.split(" ")[1]) for x in f.readlines()))
+
+    best_index: int
+    best_loss: float
     best_index, best_loss = min(valid_loss, key=lambda x: x[1])
 
     metrics_dict: dict[str, float] = {"loss": best_loss}
@@ -35,10 +47,10 @@ def log_best_epoch_metric(logger: MLFlowLogger, metrics_path: pathlib.Path) -> N
     for metric_path in metrics_path.rglob("valid*"):
         if metric_path.name.endswith("loss"):
             continue
-        metric_name = "_".join(metric_path.name.split("_")[1:])
+        metric_name: str = "_".join(metric_path.name.split("_")[1:])
 
         with metric_path.open("r") as f:
-            metric = [float(x.split(" ")[1]) for x in f.readlines()]
+            metric: list[float] = [float(x.split(" ")[1]) for x in f.readlines()]
 
             metrics_dict[metric_name] = metric[best_index]
 
@@ -57,7 +69,7 @@ def main() -> None:
     Raises:
         None
     """
-    train_dataloader = DataLoader(
+    train_dataloader: DataLoader = DataLoader(
         dataset=ImageDataset(data_path=pathlib.Path("../../data/train.parquet").resolve(), mode="train"),
         batch_size=cfg.BATCH_SIZE,
         num_workers=cfg.NUM_WORKERS,
@@ -66,7 +78,7 @@ def main() -> None:
         persistent_workers=False,
     )
 
-    valid_dataloader = DataLoader(
+    valid_dataloader: DataLoader = DataLoader(
         dataset=ImageDataset(data_path=pathlib.Path("../../data/valid.parquet").resolve(), mode="valid"),
         batch_size=cfg.BATCH_SIZE,
         num_workers=cfg.NUM_WORKERS,
@@ -75,13 +87,13 @@ def main() -> None:
         persistent_workers=False,
     )
 
-    model = Model(hyperparameters=cfg)
+    model: Model = Model(hyperparameters=cfg)
     # model.apply(initialize_weights)
     model._log_hyperparams = False
 
     savedir: pathlib.Path = pathlib.Path("../../data/logs/mlruns")
     # experiment_name: str = "No Duplicates - No resize - No regularization"
-    logger = MLFlowLogger(
+    logger: MLFlowLogger = MLFlowLogger(
         experiment_name="Model training",
         save_dir=str(savedir),
         log_model=True,
@@ -97,7 +109,7 @@ def main() -> None:
         check_finite=True,
     )
 
-    MODEL_OUTPUT_DIR = savedir / logger.experiment_id / logger.run_id / "artifacts" / "model"
+    MODEL_OUTPUT_DIR: pathlib.Path = savedir / logger.experiment_id / logger.run_id / "artifacts" / "model"
 
     model_checkpoint: ModelCheckpoint = ModelCheckpoint(
         dirpath=str(MODEL_OUTPUT_DIR / "checkpoints" / "model_checkpoint"),
