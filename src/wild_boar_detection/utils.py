@@ -4,9 +4,7 @@ import os
 import pathlib
 import sys
 from functools import lru_cache
-from typing import Type
-
-from torch import nn
+from typing import Self
 
 
 @dataclasses.dataclass
@@ -44,10 +42,20 @@ class Hyperparameters:
     OVERFIT_BATCHES: int
     SEED: int
     GRADIENT_CLIP_VAL: float
+    T_0: int
+    T_MULT: int
     GRADIENT_CLIP_TYPE: str
     PRECISION: int
     GRADIENT_ACCUMULATION_BATCHES: int
-    LOSS: nn.Module = nn.L1Loss
+    NUM_WORKERS: int
+    LOSS: str
+    MODEL: str
+
+    def __post_init__(self: Self) -> None:
+        for field in dataclasses.fields(self):
+            value = getattr(self, field.name)
+            if not isinstance(value, field.type):
+                raise ValueError(f"Expected {field.name} to be {field.type}, " f"got {value!r}")
 
 
 @lru_cache()
@@ -94,25 +102,27 @@ def get_dir_absolute_path(dir_name: str) -> pathlib.Path:
     return target_folder_path
 
 
-def dataclass_from_dict(class_: Type, dictionary: dict[str, str | float | int]) -> dict[str, str | float | int] | Type:
+def dataclass_from_dict(dataclass_: dataclasses.dataclass, dictionary: dict) -> dataclasses.dataclass:
     """Converts a dictionary to a dataclass instance.
 
     Args:
-        class_: The dataclass type.
+        dataclass_: The dataclass type.
         dictionary: The dictionary to convert.
 
     Returns:
-        Union[dict[str, Union[str, float, int]], dataclasses.dataclass]: The converted dataclass instance or the
-            original dictionary.
+        dataclasses.dataclass: The converted dataclass instance.
     """
-    try:
-        field_types: dict = {f.name: f.type for f in dataclasses.fields(class_)}
-        # print(f"field_types: {field_types}")
-        # print(f"dictionary: {dictionary}")
-        return class_(**{f: dataclass_from_dict(field_types.get(f), dictionary.get(f)) for f in dictionary})
-    except Exception:
-        # print(f"EXCEPTION: {e}")
-        return dictionary  # The object is not a dataclass field
+    dataclass_fields = [field.name for field in dataclasses.fields(dataclass_)]
+    if missing_keys := set(dataclass_fields).difference(list(dictionary.keys())):
+        raise KeyError(f"Missing keys from dictionary: {missing_keys}")
+
+    for field in dataclasses.fields(dataclass_):
+        if isinstance(dictionary[field.name], field.type):
+            continue
+
+        dictionary[field.name] = field.type(dictionary[field.name])
+
+    return dataclass_(**dictionary)
 
 
 logger: logging.Logger = set_logger(os.getenv("TITLE", ""))

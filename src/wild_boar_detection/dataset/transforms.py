@@ -36,15 +36,17 @@ class AudioCrop(torch.nn.Module):
 
 
 class AddGaussianNoise(torch.nn.Module):
-    def __init__(self, mean: float = 0.0, std: float = 1.0, p: float = 1.0) -> None:
+    def __init__(self, sigma: float = 25.0, p: float = 1.0) -> None:
         super().__init__()
         assert 0 <= p <= 1
-        self.std: float = std
-        self.mean: float = mean
+        self.sigma: float = sigma
         self.p: float = p
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + torch.randn(x.size()) * self.std + self.mean if random.random() < self.p else x
+        if random.random() < self.p:
+            return x
+
+        return torch.clip(x + self.sigma * torch.randn_like(x))
 
 
 class Squeeze(torch.nn.Module):
