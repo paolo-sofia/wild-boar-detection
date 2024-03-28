@@ -50,6 +50,7 @@ class Hyperparameters:
     NUM_WORKERS: int
     LOSS: str
     MODEL: str
+    OPTIMIZER: str
 
     def __post_init__(self: Self) -> None:
         for field in dataclasses.fields(self):
