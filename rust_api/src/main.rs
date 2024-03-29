@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::State,
+    extract::{DefaultBodyLimit, Multipart, State},
     http::{Response, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -10,6 +10,8 @@ use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 use dotenv::dotenv;
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
+use std::any::type_name;
+use std::f32::consts::E;
 use std::{
     env,
     fs::File,
@@ -18,7 +20,8 @@ use std::{
     path::Path,
     process,
 };
-use tract_onnx::prelude::*;
+use tower_http::limit::RequestBodyLimitLayer;
+use tract_onnx::{prelude::*, tract_hir::ops::math::mul};
 
 struct AppState<
     M: std::borrow::Borrow<
@@ -29,7 +32,7 @@ struct AppState<
     >,
 > {
     model: TypedRunnableModel<M>,
-    threshold: f64,
+    threshold: f32,
 }
 
 #[derive(Deserialize)]
@@ -61,6 +64,102 @@ fn decode_base64_image(base64_image: &str) -> Result<Vec<u8>, image::ImageError>
     decoder.read_to_end(&mut image).unwrap();
 
     Ok(image)
+}
+
+async fn predict_image<
+    M: std::borrow::Borrow<
+        tract_onnx::prelude::Graph<
+            tract_onnx::prelude::TypedFact,
+            std::boxed::Box<(dyn tract_onnx::prelude::TypedOp + 'static)>,
+        >,
+    >,
+>(
+    State(state): State<Arc<AppState<M>>>,
+    mut multipart: Multipart,
+) -> Response<Body> {
+    let mut data = Vec::new();
+
+    while let Some(file) = multipart.next_field().await.unwrap() {
+        let chunk = file.bytes().await.unwrap();
+        data.extend_from_slice(&chunk);
+    }
+
+    println!("Length of image is {} bytes", data.len());
+
+    let img = match image::load_from_memory(&data) {
+        Ok(img) => img,
+        Err(_) => {
+            eprintln!("Error loading image from memory");
+            let response = Prediction {
+                class: false,
+                probability: -1.0,
+            };
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(response),
+            )
+                .into_response();
+        }
+    };
+
+    let tensor = match preprocess_image(&img) {
+        Ok(tensor) => tensor,
+        Err(_) => {
+            eprintln!("Error while preprocess_image");
+            let response = Prediction {
+                class: false,
+                probability: -1.0,
+            };
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(response),
+            )
+                .into_response();
+        }
+    };
+
+    // run the model on the input
+    let result = &state.model.run(tvec!(tensor.into()));
+    let result = match result {
+        Ok(result) => result,
+        Err(_) => {
+            eprintln!("Error predict_image");
+            let response = Prediction {
+                class: false,
+                probability: -1.0,
+            };
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(response),
+            )
+                .into_response();
+        }
+    }; //.unwrap().remove(0);
+    println!("original prediction: {result:?}");
+    // find and display the max value with its index
+    let proba = match result[0].to_scalar::<f32>() {
+        Ok(proba) => proba,
+        Err(_) => {
+            eprintln!("Error predict_image");
+            let response = Prediction {
+                class: false,
+                probability: -1.0,
+            };
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(response),
+            )
+                .into_response();
+        }
+    };
+    let proba_f64: f64 = (*proba).into();
+    let probability = 1.0 / (1.0 + E.powf(-proba));
+    println!("result: {proba:?}");
+    let class = probability > state.threshold;
+    println!("class: {class:?}");
+    let prediction = Prediction { class, probability };
+
+    (StatusCode::CREATED, Json(prediction)).into_response()
 }
 
 fn preprocess_image(image: &DynamicImage) -> TractResult<Tensor> {
@@ -199,7 +298,7 @@ async fn main() {
         }
     };
 
-    let mut threshold: f64 = 0.5;
+    let mut threshold: f32 = 0.5;
     let mut index: i8 = 0;
     if let Ok(lines) = read_lines(threshold_path) {
         for line in lines.flatten() {
@@ -210,7 +309,7 @@ async fn main() {
 
             let splitted_line: Vec<&str> = line.split_whitespace().collect();
             if let Some(second_value) = splitted_line.get(1) {
-                if let Ok(threshold_value) = second_value.parse::<f64>() {
+                if let Ok(threshold_value) = second_value.parse::<f32>() {
                     threshold = threshold_value;
                     break;
                 } else {
@@ -255,7 +354,9 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(health_check))
-        .route("/predict", post(make_prediction))
+        .route("/predict", post(predict_image))
+        .layer(DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(25 * 1024 * 1024 /* 25mb */))
         .with_state(shared_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
