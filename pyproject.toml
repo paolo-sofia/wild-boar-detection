@@ -32,6 +32,9 @@ dev-dependencies = [
     "torchvision==0.17.1",
     "timm>=0.9.16",
     "matplotlib>=3.8.3",
+    "robyn>=0.53.1",
+    "pillow-simd>=9.0.0.post1",
+    "python-multipart>=0.0.9",
 ]
 
 [tool.hatch.metadata]

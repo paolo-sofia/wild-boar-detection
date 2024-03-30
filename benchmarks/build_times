@@ -1,0 +1,19 @@
+Rust
+real    1m20,913s
+user    0m0,191s
+sys     0m0,109s
+
+
+Python Debian
+real    0m51,060s
+user    0m0,097s
+sys     0m0,071s
+
+
+
+Python Alpine
+real    0m29,707s
+user    0m0,080s
+sys     0m0,067s
+
+
