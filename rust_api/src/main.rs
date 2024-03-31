@@ -9,12 +9,11 @@ use axum::{
 use dotenv::dotenv;
 use image::DynamicImage;
 use serde::Serialize;
-use std::path::Path;
 use std::{
     env,
+    fs,
     f32::consts::E,
-    fs::File,
-    io::{self, BufRead},
+    io::Error,
     process,
 };
 use tower_http::limit::RequestBodyLimitLayer;
@@ -39,13 +38,19 @@ struct Prediction {
     probability: f32,
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+fn read_float_from_file(file_path: &str) -> Result<f32, Error> {
+    // Open the file
+    let contents = fs::read_to_string(file_path).expect("Error while reading threshold file: {file_path}");
+    let th = match contents.trim().parse::<f32>() {
+        Ok(th) => th,
+        Err(_) => {
+                      eprintln!("Error: MODEL_PATH environment variable not found");
+                      0.5
+                  }
+    };
+    Ok(th)
 }
+
 
 async fn predict_image<
     M: std::borrow::Borrow<
@@ -175,27 +180,13 @@ async fn main() {
         }
     };
 
-    let mut threshold: f32 = 0.5;
-
-    if let Ok(lines) = read_lines(threshold_path) {
-        for line in lines.flatten() {
-            let splitted_line: Vec<&str> = line.split_whitespace().collect();
-            if let Some(second_value) = splitted_line.get(1) {
-                if let Ok(threshold_value) = second_value.parse::<f32>() {
-                    threshold = threshold_value;
-                    break;
-                } else {
-                    println!("Failed to parse second value as float: {}", second_value);
-                    break;
-                }
-            } else {
-                println!("Line does not have a second value");
-                break;
+    let threshold: f32 = match read_float_from_file(&threshold_path) {
+            Ok(value) => value,
+            Err(_) => {
+                println!("Error while loading threshold from file. Setting threshold value to 0.5");
+                0.5 // Default threshold value if reading fails
             }
-        }
-    } else {
-        println!("Error while loading threshold from file. Setting threshold value to 0.5");
-    }
+        };
 
     let model_path = match env::var("MODEL_PATH") {
         Ok(path) => path,

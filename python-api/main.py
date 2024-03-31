@@ -31,7 +31,7 @@ async def health_check() -> dict[str, str]:
 
 
 @app.post("/predict")
-def predict(request: Request) -> dict[str, bool | float] | dict[str, str | Exception]:
+async def predict(request: Request) -> dict[str, bool | float] | dict[str, str | Exception]:
     try:
         byte_data: bytes = bytes(request.body)
         start_index: int = byte_data.find(b"\r\n\r\n") + len(b"\r\n\r\n")
@@ -51,13 +51,11 @@ def predict(request: Request) -> dict[str, bool | float] | dict[str, str | Excep
 
         y_proba: float = (1 / (1 + np.exp(-outputs[0].item()))).item()
         y_class: bool = bool(y_proba >= THRESHOLD)
-
         return {"class": y_class, "probability": y_proba}
 
     except Exception as e:
-        logging.error("Error inside the predict function")
-        logging.error(e)
-        return {"message": "Error when performing prediction", "error": e}
+        logging.error(f"Error inside the predict function {e}")
+        return {"message": "Error when performing prediction", "error": str(e)}
 
 
 if __name__ == "__main__":
